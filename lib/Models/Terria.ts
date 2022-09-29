@@ -1,6 +1,7 @@
 import i18next from "i18next";
 import { action, computed, observable, runInAction, toJS, when } from "mobx";
 import { createTransformer } from "mobx-utils";
+import buildModuleUrl from "terriajs-cesium/Source/Core/buildModuleUrl";
 import Clock from "terriajs-cesium/Source/Core/Clock";
 import defaultValue from "terriajs-cesium/Source/Core/defaultValue";
 import defined from "terriajs-cesium/Source/Core/defined";
@@ -9,6 +10,7 @@ import CesiumEvent from "terriajs-cesium/Source/Core/Event";
 import queryToObject from "terriajs-cesium/Source/Core/queryToObject";
 import RequestScheduler from "terriajs-cesium/Source/Core/RequestScheduler";
 import RuntimeError from "terriajs-cesium/Source/Core/RuntimeError";
+import TerrainProvider from "terriajs-cesium/Source/Core/TerrainProvider";
 import Entity from "terriajs-cesium/Source/DataSources/Entity";
 import SplitDirection from "terriajs-cesium/Source/Scene/SplitDirection";
 import URI from "urijs";
@@ -17,6 +19,7 @@ import AsyncLoader from "../Core/AsyncLoader";
 import Class from "../Core/Class";
 import ConsoleAnalytics from "../Core/ConsoleAnalytics";
 import CorsProxy from "../Core/CorsProxy";
+import ensureSuffix from "../Core/ensureSuffix";
 import filterOutUndefined from "../Core/filterOutUndefined";
 import getDereferencedIfExists from "../Core/getDereferencedIfExists";
 import GoogleAnalytics from "../Core/GoogleAnalytics";
@@ -27,7 +30,6 @@ import {
   isJsonBoolean,
   isJsonNumber,
   isJsonObject,
-  isJsonObjectArray,
   isJsonString,
   JsonArray,
   JsonObject
@@ -81,11 +83,12 @@ import {
   initializeErrorServiceProvider
 } from "./ErrorServiceProviders/ErrorService";
 import StubErrorServiceProvider from "./ErrorServiceProviders/StubErrorServiceProvider";
-import Feature from "./Feature";
+import TerriaFeature from "./Feature/Feature";
 import GlobeOrMap from "./GlobeOrMap";
 import IElementConfig from "./IElementConfig";
 import InitSource, {
   InitSourceData,
+  InitSourceFromData,
   isInitFromData,
   isInitFromDataPromise,
   isInitFromOptions,
@@ -99,8 +102,10 @@ import Internationalization, {
 } from "./Internationalization";
 import MapInteractionMode from "./MapInteractionMode";
 import NoViewer from "./NoViewer";
+import { defaultRelatedMaps, RelatedMap } from "./RelatedMaps";
 import CatalogIndex from "./SearchProviders/CatalogIndex";
 import ShareDataService from "./ShareDataService";
+import { StoryVideoSettings } from "./StoryVideoSettings";
 import TimelineStack from "./TimelineStack";
 import { isViewerMode, setViewerMode } from "./ViewerMode";
 import Workbench from "./Workbench";
@@ -126,9 +131,13 @@ interface ConfigParameters {
    */
   catalogIndexUrl?: string;
   /**
-   * URL of the JSON file that defines region mapping for CSV files.
+   * **Deprecated** - please use regionMappingDefinitionsUrls array instead. If this is defined, it will override `regionMappingDefinitionsUrls`
    */
-  regionMappingDefinitionsUrl: string;
+  regionMappingDefinitionsUrl?: string | undefined;
+  /**
+   * URLs of the JSON file that defines region mapping for CSV files. First matching region will be used (in array order)
+   */
+  regionMappingDefinitionsUrls: string[];
   /**
    * URL of Proj4 projection lookup service (part of TerriaJS-Server).
    */
@@ -237,6 +246,10 @@ interface ConfigParameters {
    */
   welcomeMessageVideo?: any;
   /**
+   * Video to show in Story Builder.
+   */
+  storyVideo?: StoryVideoSettings;
+  /**
    * True to display in-app guides.
    */
   showInAppGuides?: boolean;
@@ -305,6 +318,8 @@ interface ConfigParameters {
    * Options for Google Analytics
    */
   googleAnalyticsOptions?: unknown;
+
+  relatedMaps?: RelatedMap[];
 }
 
 interface StartOptions {
@@ -356,6 +371,12 @@ interface TerriaOptions {
    * Normally "build/TerriaJS/" in any TerriaMap and "./" in specs
    */
   baseUrl?: string;
+
+  /**
+   * Base url where Cesium static resources can be found.
+   */
+  cesiumBaseUrl?: string;
+
   analytics?: Analytics;
 }
 
@@ -380,6 +401,13 @@ export default class Terria {
     typeof document !== "undefined" ? document.baseURI : "/";
   /** Base URL to Terria resources */
   readonly baseUrl: string = "build/TerriaJS/";
+
+  /**
+   * Base URL used by Cesium to link to images and other static assets.
+   * This can be customized by passing `options.cesiumBaseUrl`
+   * Default value is constructed relative to `Terria.baseUrl`.
+   */
+  readonly cesiumBaseUrl: string;
 
   readonly tileLoadProgressEvent = new CesiumEvent();
   readonly indeterminateTileLoadProgressEvent = new CesiumEvent();
@@ -437,7 +465,8 @@ export default class Terria {
     supportEmail: "info@terria.io",
     defaultMaximumShownFeatureInfos: 100,
     catalogIndexUrl: undefined,
-    regionMappingDefinitionsUrl: "build/TerriaJS/data/regionMapping.json",
+    regionMappingDefinitionsUrl: undefined,
+    regionMappingDefinitionsUrls: ["build/TerriaJS/data/regionMapping.json"],
     proj4ServiceBaseUrl: "proj4def/",
     corsProxyBaseUrl: "proxy/",
     proxyableDomainsUrl: "proxyabledomains/", // deprecated, will be determined from serverconfig
@@ -475,6 +504,9 @@ export default class Terria {
       placeholderImage:
         "https://img.youtube.com/vi/FjSxaviSLhc/maxresdefault.jpg"
     },
+    storyVideo: {
+      videoUrl: "https://www.youtube-nocookie.com/embed/fbiQawV8IYY"
+    },
     showInAppGuides: false,
     helpContent: [],
     helpContentTerms: defaultTerms,
@@ -497,14 +529,15 @@ export default class Terria {
     printDisclaimer: undefined,
     storyRouteUrlPrefix: undefined,
     enableConsoleAnalytics: undefined,
-    googleAnalyticsOptions: undefined
+    googleAnalyticsOptions: undefined,
+    relatedMaps: defaultRelatedMaps
   };
 
   @observable
   pickedFeatures: PickedFeatures | undefined;
 
   @observable
-  selectedFeature: Feature | undefined;
+  selectedFeature: TerriaFeature | undefined;
 
   @observable
   allowFeatureInfoRequests: boolean = true;
@@ -611,13 +644,17 @@ export default class Terria {
         typeof document !== "undefined" ? document.baseURI : "/"
       ).toString();
     }
+
     if (options.baseUrl) {
-      if (options.baseUrl.lastIndexOf("/") !== options.baseUrl.length - 1) {
-        this.baseUrl = options.baseUrl + "/";
-      } else {
-        this.baseUrl = options.baseUrl;
-      }
+      this.baseUrl = ensureSuffix(options.baseUrl, "/");
     }
+
+    this.cesiumBaseUrl = ensureSuffix(
+      options.cesiumBaseUrl ?? `${this.baseUrl}build/Cesium/build/`,
+      "/"
+    );
+    // Casting to `any` as `setBaseUrl` method is not part of the Cesiums' type definitions
+    (buildModuleUrl as any).setBaseUrl(this.cesiumBaseUrl);
 
     this.analytics = options.analytics;
     if (!defined(this.analytics)) {
@@ -671,6 +708,14 @@ export default class Terria {
     ) {
       return this.mainViewer.currentViewer as import("./Cesium").default;
     }
+  }
+
+  /**
+   * @returns The currently active `TerrainProvider` or `undefined`.
+   */
+  @computed
+  get terrainProvider(): TerrainProvider | undefined {
+    return this.cesium?.terrainProvider;
   }
 
   @computed
@@ -736,7 +781,7 @@ export default class Terria {
     if (pickedFeatures) {
       // Remove picked features that belong to the catalog item
       pickedFeatures.features.forEach((feature, i) => {
-        if (featureBelongsToCatalogItem(<Feature>feature, model)) {
+        if (featureBelongsToCatalogItem(<TerriaFeature>feature, model)) {
           pickedFeatures?.features.splice(i, 1);
           if (this.selectedFeature === feature)
             this.selectedFeature = undefined;
@@ -1218,13 +1263,15 @@ export default class Terria {
     const errors: TerriaError[] = [];
 
     // Load all init sources
+    // Converts them to InitSourceFromData
     const loadedInitSources = await Promise.all(
       this.initSources.map(async initSource => {
         try {
           return {
-            ...initSource,
+            name: initSource.name,
+            errorSeverity: initSource.errorSeverity,
             data: await loadInitSource(initSource)
-          };
+          } as InitSourceFromData;
         } catch (e) {
           errors.push(
             TerriaError.from(e, {
@@ -1239,29 +1286,28 @@ export default class Terria {
       })
     );
 
-    // Apply all init sources
-    await Promise.all(
-      loadedInitSources.map(async initSource => {
-        if (!isDefined(initSource?.data)) return;
-        try {
-          await this.applyInitData({
-            initData: initSource!.data
-          });
-        } catch (e) {
-          errors.push(
-            TerriaError.from(e, {
-              severity: initSource?.errorSeverity,
-              message: {
-                key: "models.terria.loadingInitSourceError2Message",
-                parameters: {
-                  loadSource: initSource!.name ?? "Unknown source"
-                }
+    // Sequentially apply all InitSources
+    for (let i = 0; i < loadedInitSources.length; i++) {
+      const initSource = loadedInitSources[i];
+      if (!isDefined(initSource?.data)) continue;
+      try {
+        await this.applyInitData({
+          initData: initSource!.data
+        });
+      } catch (e) {
+        errors.push(
+          TerriaError.from(e, {
+            severity: initSource?.errorSeverity,
+            message: {
+              key: "models.terria.loadingInitSourceError2Message",
+              parameters: {
+                loadSource: initSource!.name ?? "Unknown source"
               }
-            })
-          );
-        }
-      })
-    );
+            }
+          })
+        );
+      }
+    }
 
     // Load basemap
     runInAction(() => {
@@ -1839,8 +1885,8 @@ export default class Terria {
 
   @action
   async loadPickedFeatures(pickedFeatures: JsonObject): Promise<void> {
-    let vectorFeatures: Entity[] = [];
-    let featureIndex: Record<number, Entity[] | undefined> = {};
+    let vectorFeatures: TerriaFeature[] = [];
+    let featureIndex: Record<number, TerriaFeature[] | undefined> = {};
 
     if (Array.isArray(pickedFeatures.entities)) {
       // Build index of terria features by a hash of their properties.
@@ -1857,8 +1903,9 @@ export default class Terria {
           .reduce((arr: Entity[], ds) => arr.concat(ds.entities.values), []);
 
         entities.forEach(entity => {
-          const hash = hashEntity(entity, this.timelineClock);
-          const feature = Feature.fromEntityCollectionOrEntity(entity);
+          const feature = TerriaFeature.fromEntityCollectionOrEntity(entity);
+          const hash = hashEntity(feature, this);
+
           featureIndex[hash] = (featureIndex[hash] || []).concat([feature]);
         });
       });
@@ -1890,7 +1937,7 @@ export default class Terria {
       this.currentViewer.pickFromLocation(
         pickCoords,
         pickedFeatures.providerCoords,
-        vectorFeatures as Feature[]
+        vectorFeatures as TerriaFeature[]
       );
     }
 
@@ -1900,23 +1947,21 @@ export default class Terria {
     }
 
     runInAction(() => {
-      this.pickedFeatures?.features.forEach((entity: Entity) => {
-        const hash = hashEntity(entity, this.timelineClock);
-        const feature = entity;
+      this.pickedFeatures?.features.forEach(feature => {
+        const hash = hashEntity(feature, this);
         featureIndex[hash] = (featureIndex[hash] || []).concat([feature]);
       });
 
+      // Find picked feature by matching feature hash
+      // Also try to match name if defined
       const current = pickedFeatures.current;
-      if (
-        isJsonObject(current) &&
-        typeof current.hash === "number" &&
-        typeof current.name === "string"
-      ) {
-        const selectedFeature = (featureIndex[current.hash] || []).find(
-          feature => feature.name === current.name
-        );
+      if (isJsonObject(current) && typeof current.hash === "number") {
+        const selectedFeature =
+          (featureIndex[current.hash] || []).find(
+            feature => feature.name === current.name
+          ) ?? featureIndex[current.hash]?.[0];
         if (selectedFeature) {
-          this.selectedFeature = selectedFeature as Feature;
+          this.selectedFeature = selectedFeature;
         }
       }
     });
@@ -1977,7 +2022,9 @@ function generateInitializationUrl(
     return {
       options: initFragmentPaths.map(fragmentPath => {
         return {
-          initUrl: URI.joinPaths(fragmentPath, url + ".json")
+          initUrl: new URI(fragmentPath)
+            .segment(url)
+            .suffix("json")
             .absoluteTo(baseUri)
             .toString()
         };
@@ -2072,8 +2119,6 @@ async function interpretStartData(
   errorSeverity?: TerriaErrorSeverity,
   showConversionWarning = true
 ) {
-  const containsStory = (initSource: InitSourceData) =>
-    Array.isArray(initSource.stories) && initSource.stories.length;
   if (isJsonObject(startData, false)) {
     // Convert startData to v8 if necessary
     let startDataV8: ShareInitSourceData | null;
@@ -2102,25 +2147,50 @@ async function interpretStartData(
           version: isJsonString(startData.version)
             ? startData.version
             : SHARE_VERSION,
-          initSources: isJsonObjectArray(startData.initSources)
-            ? startData.initSources
+          initSources: Array.isArray(startData.initSources)
+            ? (startData.initSources.filter(
+                initSource =>
+                  isJsonString(initSource) || isJsonObject(initSource)
+              ) as (string | JsonObject)[])
             : []
         };
       }
 
       if (startDataV8 !== null && Array.isArray(startDataV8.initSources)) {
+        // Push startData.initSources to terria.initSources array
+        // Note startData.initSources can be an initUrl (string) or initData (InitDataSource/JsonObject)
+        // Terria.initSources are different to startData.initSources
+        // They need to be transformed into appropriate `InitSource`
         runInAction(() => {
           terria.initSources.push(
-            ...startDataV8!.initSources.map((initSource: unknown) => {
-              return {
-                name,
-                data: isJsonObject(initSource, false) ? initSource : {},
-                errorSeverity
-              };
-            })
+            ...startDataV8!.initSources.map(initSource =>
+              isJsonString(initSource)
+                ? // InitSourceFromUrl if string
+                  {
+                    name,
+                    initUrl: initSource,
+                    errorSeverity
+                  }
+                : // InitSourceFromData if Json Object
+                  {
+                    name,
+                    data: initSource,
+                    errorSeverity
+                  }
+            )
           );
         });
-        if (startDataV8.initSources.some(containsStory)) {
+
+        // If initSources contain story - we disable the welcome message so there aren't too many modals/popups
+        // We only check JSON share initSources - as URLs will be loaded in `forceLoadInitSources`
+        if (
+          startDataV8.initSources.some(
+            initSource =>
+              isJsonObject(initSource) &&
+              Array.isArray(initSource.stories) &&
+              initSource.stories.length
+          )
+        ) {
           terria.configParameters.showWelcomeMessage = false;
         }
       }

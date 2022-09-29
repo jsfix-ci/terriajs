@@ -34,7 +34,7 @@ import createStratumInstance from "../Models/Definition/createStratumInstance";
 import LoadableStratum from "../Models/Definition/LoadableStratum";
 import Model, { BaseModel } from "../Models/Definition/Model";
 import StratumOrder from "../Models/Definition/StratumOrder";
-import Feature from "../Models/Feature";
+import TerriaFeature from "../Models/Feature/Feature";
 import Cesium3DTilesCatalogItemTraits from "../Traits/TraitsClasses/Cesium3DTilesCatalogItemTraits";
 import Cesium3dTilesTraits, {
   OptionsTraits
@@ -433,20 +433,26 @@ function Cesium3dTilesMixin<T extends Constructor<Model<Cesium3dTilesTraits>>>(
       return new Cesium3DTileStyle(style);
     }
 
+    /**
+     * This function should return null if allowFeaturePicking = false
+     * @param _screenPosition
+     * @param pickResult
+     */
     buildFeatureFromPickResult(
       _screenPosition: Cartesian2 | undefined,
       pickResult: any
     ) {
       if (
-        pickResult instanceof Cesium3DTileFeature ||
-        pickResult instanceof Cesium3DTilePointFeature
+        this.allowFeaturePicking &&
+        (pickResult instanceof Cesium3DTileFeature ||
+          pickResult instanceof Cesium3DTilePointFeature)
       ) {
         const properties: { [name: string]: unknown } = {};
         pickResult.getPropertyNames().forEach(name => {
           properties[name] = pickResult.getProperty(name);
         });
 
-        const result = new Feature({
+        const result = new TerriaFeature({
           properties
         });
 

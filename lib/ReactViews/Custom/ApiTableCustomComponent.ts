@@ -53,11 +53,8 @@ export default class ApiTableChartCustomComponent extends ChartCustomComponent<
     }
 
     json.id = item.uniqueId;
-    const result = updateModelFromJson(
-      item,
-      CommonStrata.definition,
-      json,
-      true
+    updateModelFromJson(item, CommonStrata.definition, json, true).logError(
+      "Error ocurred while updating ApiTableChartCustomComponent model from JSON"
     );
   }
 

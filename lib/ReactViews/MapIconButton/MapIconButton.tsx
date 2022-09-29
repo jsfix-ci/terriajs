@@ -26,7 +26,6 @@ interface IStyledMapIconButtonProps {
 
 // styles half ripped from nav.scss
 const StyledMapIconButton = styled(RawButton)<IStyledMapIconButtonProps>`
-
   border-radius: 16px;
   ${props => props.roundLeft && `border-radius: 16px 0 0 16px;`}
   ${props => props.roundRight && `border-radius: 0 16px 16px 0;`}

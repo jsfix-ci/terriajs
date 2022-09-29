@@ -1,10 +1,12 @@
 import { runInAction } from "mobx";
 import { GeomType, LineSymbolizer, PolygonSymbolizer } from "protomaps";
 import { CustomDataSource } from "terriajs-cesium";
+import Cartesian2 from "terriajs-cesium/Source/Core/Cartesian2";
 import Cartesian3 from "terriajs-cesium/Source/Core/Cartesian3";
 import createGuid from "terriajs-cesium/Source/Core/createGuid";
 import Iso8601 from "terriajs-cesium/Source/Core/Iso8601";
 import JulianDate from "terriajs-cesium/Source/Core/JulianDate";
+import Entity from "terriajs-cesium/Source/DataSources/Entity";
 import GeoJsonDataSource from "terriajs-cesium/Source/DataSources/GeoJsonDataSource";
 import HeightReference from "terriajs-cesium/Source/Scene/HeightReference";
 import { JsonObject } from "../../../../lib/Core/Json";
@@ -23,7 +25,7 @@ import GeoJsonCatalogItem from "../../../../lib/Models/Catalog/CatalogItems/GeoJ
 import SplitItemReference from "../../../../lib/Models/Catalog/CatalogReferences/SplitItemReference";
 import CommonStrata from "../../../../lib/Models/Definition/CommonStrata";
 import updateModelFromJson from "../../../../lib/Models/Definition/updateModelFromJson";
-import Feature from "../../../../lib/Models/Feature";
+import TerriaFeature from "../../../../lib/Models/Feature/Feature";
 import Terria from "../../../../lib/Models/Terria";
 
 describe("GeoJsonCatalogItemSpec", () => {
@@ -880,6 +882,18 @@ describe("GeoJsonCatalogItemSpec", () => {
       expect(geojson.legends.length).toBe(1);
       expect(geojson.legends[0].url).toBe("some-url");
     });
+
+    it("correctly builds `Feature` from picked Entity", function() {
+      const picked = new Entity();
+      const feature = geojson.buildFeatureFromPickResult(
+        Cartesian2.ZERO,
+        picked
+      );
+      expect(feature).toBeDefined();
+      if (feature) {
+        expect(feature.cesiumEntity).toBe(picked);
+      }
+    });
   });
 
   describe("Disables protomaps (mvt) if geoJson simple styling is detected", () => {
@@ -1182,7 +1196,7 @@ describe("GeoJsonCatalogItemSpec", () => {
 
       if ("imageryProvider" in imagery) {
         const highlight = imagery.imageryProvider.createHighlightImageryProvider(
-          new Feature({ properties: { [FEATURE_ID_PROP]: "0" } })
+          new TerriaFeature({ properties: { [FEATURE_ID_PROP]: "0" } })
         );
         expect(highlight).toBeDefined();
 

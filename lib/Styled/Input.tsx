@@ -26,33 +26,33 @@ type TextAreaProps = React.InputHTMLAttributes<HTMLTextAreaElement> &
   };
 
 const commonStyles = css<InputProps | TextAreaProps>`
--moz-appearance: none;
--webkit-appearance: none;
+  -moz-appearance: none;
+  -webkit-appearance: none;
 
-display: block;
-box-sizing: border-box;
-height: ${p => p.theme.inputHeight};
-width: 100%;
-border: none;
-border-radius: ${p => p.theme.radiusSmall};
+  display: block;
+  box-sizing: border-box;
+  height: ${p => p.theme.inputHeight};
+  width: 100%;
+  border: none;
+  border-radius: ${p => p.theme.radiusSmall};
 
-${props =>
-  props.border &&
-  `
+  ${props =>
+    props.border &&
+    `
   border-style: solid;
   border-width: 1px;
   border-color: ${props.fieldBorder};
 `}
-margin-top: 0;
-margin-bottom: 0;
-padding: 0px;
-padding-left: 10px;
-padding-right: 10px;
-color: ${p => p.theme.textDark};
-background: ${p => p.theme.overlayInvert};
-${props =>
-  props.light &&
-  `
+  margin-top: 0;
+  margin-bottom: 0;
+  padding: 0px;
+  padding-left: 10px;
+  padding-right: 10px;
+  color: ${p => p.theme.textDark};
+  background: ${p => p.theme.overlayInvert};
+  ${props =>
+    props.light &&
+    `
   color: ${props.theme.textBlack};
   background: ${props.theme.overlayInvert};
   ${props.border &&
@@ -61,9 +61,9 @@ ${props =>
     border-color: transparent;
   }`}
 `}
-${props =>
-  props.dark &&
-  `
+  ${props =>
+    props.dark &&
+    `
   color: ${props.theme.textLight};
   background: ${props.theme.overlay};
   ${props.border &&
@@ -93,7 +93,7 @@ ${props =>
 `;
 
 export const StyledTextArea = styled.textarea<TextAreaProps>`
-${commonStyles}
+  ${commonStyles}
   line-height: ${props => props.lineHeight};
   padding-top: 5px;
   padding-bottom: 5px;

@@ -1971,13 +1971,13 @@ describe("CsvCatalogItem with no geo using default bundled regionMapping", funct
         tableStyle: {
           allVariablesUnactive: true,
           columns: {
-            "0": {
+            0: {
               active: false
             },
-            "1": {
+            1: {
               active: false
             },
-            "2": {
+            2: {
               active: false
             }
           }
@@ -2096,13 +2096,13 @@ describe("CsvCatalogItem & chart sharing", function() {
             timeSeriesCsv.updateFromJson({
               tableStyle: {
                 columns: {
-                  "0": {
+                  0: {
                     active: false
                   },
-                  "1": {
+                  1: {
                     active: true
                   },
-                  "2": {
+                  2: {
                     active: true
                   }
                 }
@@ -2222,13 +2222,13 @@ describe("CsvCatalogItem & chart sharing", function() {
   describe("serialization around tableStyle & tableStructures for non-geo time series csvs", function() {
     it("can be round-tripped with serializeToJson and updateFromJson", function() {
       columns = {
-        "0": {
+        0: {
           active: false
         },
-        "1": {
+        1: {
           active: false
         },
-        "2": {
+        2: {
           active: false
         }
       };
@@ -2266,13 +2266,13 @@ describe("CsvCatalogItem & chart sharing", function() {
     });
     it("serializes the dataurl for sharing if url does not exist", function() {
       columns = {
-        "0": {
+        0: {
           active: false
         },
-        "1": {
+        1: {
           active: false
         },
-        "2": {
+        2: {
           active: false
         }
       };
@@ -2313,13 +2313,13 @@ describe("CsvCatalogItem & chart sharing", function() {
     });
     it("generates columns on a table style on serialization for chartable items, when a CsvCatalogItem is created without them", function(done) {
       columns = {
-        "0": {
+        0: {
           active: false
         },
-        "1": {
+        1: {
           active: false
         },
-        "2": {
+        2: {
           active: true
         }
       };
@@ -2395,13 +2395,13 @@ describe("CsvCatalogItem & chart sharing", function() {
 
     it("initialises and shares the correct 'no variables selected' state", function(done) {
       columns = {
-        "0": {
+        0: {
           active: false
         },
-        "1": {
+        1: {
           active: false
         },
-        "2": {
+        2: {
           active: false
         }
       };
@@ -2453,13 +2453,13 @@ describe("CsvCatalogItem & chart sharing", function() {
     });
     it("initialises the correct 'second variable is selected' state & shares newly toggled state", function(done) {
       columns = {
-        "0": {
+        0: {
           active: false
         },
-        "1": {
+        1: {
           active: false
         },
-        "2": {
+        2: {
           active: true
         }
       };

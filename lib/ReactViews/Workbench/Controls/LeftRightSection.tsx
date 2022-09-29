@@ -17,9 +17,9 @@ interface ILeftRightButton {
   isActive: boolean;
 }
 
-const LeftRightButton = styled(RawButton).attrs({ fullWidth: true })<
-  ILeftRightButton
->`
+const LeftRightButton = styled(RawButton).attrs({
+  fullWidth: true
+})<ILeftRightButton>`
   text-align: center;
   padding: 5px;
   color: ${p => p.theme.textLight};
